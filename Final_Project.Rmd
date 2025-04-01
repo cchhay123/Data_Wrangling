@@ -1,0 +1,134 @@
+---
+title: "Report: Serial Killers"
+author: "Chamroeun Chhay"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    self_contained: yes
+    mode: selfcontained
+---
+
+## Introduction
+
+I have always been interested in the mysteries of the world. The majority of my entertainment comes from listening to mystery podcast while I study. These mysteries range from mysterious disappearances to unexplained relics of lost civilizations. One of the most fascinating mysteries for me is the idea of serial killers. I cannot fathom harming another person, let alone ending someone's life, so I am curious about what factors contribute to some serial killers having victim counts in the tens or even hundreds.
+
+### Primary Questions
+
+1. Which countries have the highest number of serial killers? Which one has the highest number of murder victims? 
+2. There is a spike in both number of serial killers and number of murder victims in America around the 70s and the 80s. Why? 
+
+## Data
+
+The data that I am using for this project can be accessed from [kaggle](https://www.kaggle.com/datasets/vesuvius13/serial-killers-dataset/data) 
+
+There are four different csv files in the data set. I used the list.files to list all the files in a directory. Afterwards, I used lapply to read the csv files in the R and used do.call to combine the multiple csv files into a single data frame.
+
+```{r}
+file_list <- list.files("~/Desktop/Data Wrangling/archive-2", 
+                        pattern = ".csv", all.files = TRUE, full.names = TRUE)
+
+killer_set <- lapply(file_list, read.csv)
+
+serial_killer <- do.call(rbind, killer_set)
+
+```
+
+The serial killer data came in rather messy. There are a few important variables that I need to create to answer my questions. I'll start with separating the *start year* and the *end year* of their active years. To do this, I must create two addditional columns to store the new values in. The entry to row 242 is different from the rest of the data, where they written out the day, month, year in characters. I just want to change the entry to the year. 1983. I also converted the data type to numeric for easy calculation. 
+
+```{r}
+library(stringr)
+
+serial_killer[c('year_start', 'year_end')] <- str_split_fixed(serial_killer$Years.active, 
+                                                              " to ", 2)
+
+serial_killer$year_start <- stringr::str_extract(serial_killer$year_start, "[0-9]+")
+serial_killer$year_end <- stringr::str_extract(serial_killer$year_end, "[0-9]+")
+
+serial_killer[242, 7] <- 1983
+serial_killer[242, 8] <- 1983
+
+serial_killer$year_start <- as.numeric(serial_killer$year_start)
+serial_killer$year_end <- as.numeric(serial_killer$year_end)
+
+```
+
+Furthermore, I have to clean up the Country columns since there are some killers that committed their crimes arcoss multiple countries. The countries are separated by **\n** so it was hard to get the code running. The other issue is that countries with two or more words are also separated by the **\n**.
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+countries <- c("(United) (States)", 
+               "(United) (Kingdom)", 
+               "(Ottoman) (Empire)", 
+               "(South) (Korea)", 
+               "(Kingdom) (of) (Romania)",
+               "(Soviet) (Union)",
+               "(South) (Africa)",
+               "(Costa) (Rica)",
+               "(West) (Germany)",
+               "(East) (Germany)", 
+               "(German) (Empire)",
+               "(Allied-occupied) (Germany)")
+
+for(i in countries) {
+  serial_killer$Country <- gsub(
+    i, 
+    "\\1_\\2_\\3", 
+    serial_killer$Country)
+}
+
+serial_killer$Country <- gsub(" \\(suspected\\)| \\(claimed\\)| \\(alleged\\)", "", 
+                              serial_killer$Country)
+serial_killer$Country <- gsub("Allied-occupied_Germany_", "", serial_killer$Country)
+serial_killer$Country <- gsub("West_Germany_|East_Germany", "Germany", serial_killer$Country)
+serial_killer$Country <- gsub("German_Empire_", "", serial_killer$Country)
+
+serial_killer <- serial_killer %>% separate_rows(Country, sep = "\n", convert = TRUE)
+
+```
+
+Another issue with the data is how the proven victims columns are being formatted. Some of the rows have a range proven victims, which makes little sense as there should be an accurate number for "proven" victims. For that, I would just create a new column to take the minimum number and convert it to numeric. Using the dplyr and tidyr, I use the str_extract to get the first number in the columns as the minimum. After that, I converted the data type into numeric and removed all non-numeric characters from the columns. 
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+serial_killer <- serial_killer %>%
+  mutate(proven.min = str_extract(Proven.victims, "[0-9]+")) %>%
+  mutate(proven.min = as.numeric(str_remove_all(proven.min, "\\D")))
+
+```
+
+## Methods
+
+To answer my questions, I want to transfer the wrangled data into Tableau. There will make bar graphs to show the sum of how many serial killers group by countries. 
+
+```{r}
+serial_killer$count <- 1
+
+Number_countries <- aggregate(count ~ Country, data = serial_killer, FUN = sum)
+
+Number_countries <- Number_countries %>% arrange(desc(count))
+
+Number_victim <- aggregate(proven.min ~ Country, data = serial_killer, FUN = sum)
+
+Number_victim <- Number_victim %>% arrange(desc(proven.min))
+
+Numbers <- merge(Number_victim, Number_countries, by = 'Country')
+
+Numbers <- Numbers %>% arrange(desc(count))
+
+write.csv(serial_killer, file = '~/Downloads/serial_killer.csv', row.names = FALSE)
+
+```
+
+## Results
+
+In Tableau, I found that the United States is leading in both the number of serial killers and the number of proven victims. I also create an additional time series graph to show the number of victims throughout history until 2015. The time series graph shows that there is a huge spike of number of victims and serial killers between the 70s and the 90s. I want to showcase and explain why that is the case in my presentation. 
+
+## Discussion
+
+From the results, I want to further research why there was a disproportionate number of serial killers and victims in America, specifically between the 70s and the 90s. Many different factors came together to make that time period, and I quote, 'the golden age of serial killers.' Many of the serial killers witnessed abuse or were abused as children. These traumas can manifest as violent tendencies in adulthood. Other factors include the trusting nature of people during that time. There was a higher rate of people who would hitchhike, leave their houses unlocked, etc. Additionally, there was a rise in the sensationalization of these killers by the media. Media companies took advantage of fear as a selling point to gain viewership. Sensationalizing these serial killers glamorized violence to the general public, which in turn encouraged copycats. All these different factors came together to create the perfect setting for serial killers to spike in numbers during that time. 
+
